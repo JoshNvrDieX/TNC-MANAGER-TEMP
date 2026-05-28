@@ -1,112 +1,106 @@
 import { Guild } from '#dbSchema/guilds';
 import { config } from '#config';
-import { client } from '#src/bot';
 
 const CACHE_TTL = 18000;
 const CACHE_PREFIX = 'guild:';
 
 export class GuildRepository {
-        /**
-         * Fetches a guild by ID. Returns the cached record if available.
-         * @param {string} guildId
-         * @returns {Promise<Object|null>}
-         */
-        async findById(guildId) {
-                if (!guildId) return null;
+	constructor() {
+		/** @type {import('#classes/client').Bot|null} Set after DB init via GuildService.setClient */
+		this.client = null;
+	}
 
-                const cacheKey = `${CACHE_PREFIX}${guildId}`;
-                const cached = await client.c.get(cacheKey);
-                if (cached !== null && cached !== undefined) return cached;
+	/**
+	 * Fetches a guild by ID. Returns the cached record if available.
+	 * @param {string} guildId
+	 * @returns {Promise<Object|null>}
+	 */
+	async findById(guildId) {
+		if (!guildId) return null;
 
-                const guild = await Guild.findById(guildId).lean();
-                const result = guild ? this._normalise(guild) : null;
-                if (result) {
-                        await client.c.set(cacheKey, result, CACHE_TTL);
-                }
+		const cacheKey = `${CACHE_PREFIX}${guildId}`;
+		const cached = await this.client.c.get(cacheKey);
+		if (cached !== null && cached !== undefined) return cached;
 
-                return result;
-        }
+		const result = Guild.findById(guildId);
+		if (result) {
+			await this.client.c.set(cacheKey, result, CACHE_TTL);
+		}
 
-        /**
-         * Returns the guild record, creating a default one if absent.
-         * @param {string} guildId
-         * @returns {Promise<Object>}
-         */
-        async findOrCreate(guildId) {
-                if (!guildId) throw new Error('Invalid guildId');
+		return result;
+	}
 
-                let guild = await this.findById(guildId);
-                if (!guild) {
-                        const doc = await Guild.findByIdAndUpdate(
-                                guildId,
-                                { $setOnInsert: { prefixes: [config.prefix], ignoredChannels: [] } },
-                                { upsert: true, new: true },
-                        ).lean();
-                        guild = this._normalise(doc);
+	/**
+	 * Returns the guild record, creating a default one if absent.
+	 * @param {string} guildId
+	 * @returns {Promise<Object>}
+	 */
+	async findOrCreate(guildId) {
+		if (!guildId) throw new Error('Invalid guildId');
 
-                        await Promise.all([
-                                client.c.set(`${CACHE_PREFIX}${guildId}`, guild, CACHE_TTL),
-                                this._invalidateListCaches(),
-                        ]);
-                }
+		let guild = await this.findById(guildId);
+		if (!guild) {
+			guild = Guild.findOrCreate(guildId, {
+				prefixes: [config.prefix],
+				ignoredChannels: [],
+			});
 
-                return guild;
-        }
+			await Promise.all([
+				this.client.c.set(`${CACHE_PREFIX}${guildId}`, guild, CACHE_TTL),
+				this._invalidateListCaches(),
+			]);
+		}
 
-        /**
-         * Applies a partial update to a guild document.
-         * @param {string} guildId
-         * @param {Object} data
-         * @returns {Promise<void>}
-         */
-        async update(guildId, data) {
-                if (!guildId) return;
+		return guild;
+	}
 
-                await Guild.findByIdAndUpdate(guildId, { $set: data });
-                await this._invalidateGuildCaches(guildId);
-        }
+	/**
+	 * Applies a partial update to a guild row.
+	 * @param {string} guildId
+	 * @param {Object} data
+	 * @returns {Promise<void>}
+	 */
+	async update(guildId, data) {
+		if (!guildId) return;
 
-        /**
-         * Deletes a guild document and purges its cache entries.
-         * @param {string} guildId
-         * @returns {Promise<void>}
-         */
-        async delete(guildId) {
-                if (!guildId) return;
+		Guild.update(guildId, data);
+		await this._invalidateGuildCaches(guildId);
+	}
 
-                await Guild.findByIdAndDelete(guildId);
-                await this._invalidateGuildCaches(guildId);
-        }
+	/**
+	 * Deletes a guild row and purges its cache entries.
+	 * @param {string} guildId
+	 * @returns {Promise<void>}
+	 */
+	async delete(guildId) {
+		if (!guildId) return;
 
-        /**
-         * Returns all guild documents.
-         * @returns {Promise<Object[]>}
-         */
-        async findAll() {
-                const cacheKey = `${CACHE_PREFIX}all`;
-                const cached = await client.c.get(cacheKey);
-                if (cached !== null && cached !== undefined) return cached;
+		Guild.delete(guildId);
+		await this._invalidateGuildCaches(guildId);
+	}
 
-                const result = (await Guild.find().lean()).map(this._normalise);
-                await client.c.set(cacheKey, result, 1800);
+	/**
+	 * Returns all guild rows.
+	 * @returns {Promise<Object[]>}
+	 */
+	async findAll() {
+		const cacheKey = `${CACHE_PREFIX}all`;
+		const cached = await this.client.c.get(cacheKey);
+		if (cached !== null && cached !== undefined) return cached;
 
-                return result;
-        }
+		const result = Guild.findAll();
+		await this.client.c.set(cacheKey, result, 1800);
 
-        /** @private */
-        _normalise(doc) {
-                if (!doc) return null;
-                const { _id, __v, ...rest } = doc;
-                return { id: _id, ...rest };
-        }
+		return result;
+	}
 
-        /** @private */
-        async _invalidateGuildCaches(guildId) {
-                await client.c.mdel([`${CACHE_PREFIX}${guildId}`, `${CACHE_PREFIX}all`]);
-        }
+	/** @private */
+	async _invalidateGuildCaches(guildId) {
+		await this.client.c.mdel([`${CACHE_PREFIX}${guildId}`, `${CACHE_PREFIX}all`]);
+	}
 
-        /** @private */
-        async _invalidateListCaches() {
-                await client.c.mdel([`${CACHE_PREFIX}all`]);
-        }
+	/** @private */
+	async _invalidateListCaches() {
+		await this.client.c.mdel([`${CACHE_PREFIX}all`]);
+	}
 }

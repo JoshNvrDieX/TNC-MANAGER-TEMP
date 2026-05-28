@@ -136,27 +136,12 @@ const handleChatInputCommand = async (interaction, client) => {
 		const guildId = interaction.guild.id;
 		const channelId = interaction.channel.id;
 
-		let isUserBlacklisted = false;
-		let isGuildBlacklisted = false;
 		let isChannelIgnored = false;
 
 		try {
-			[isUserBlacklisted, isGuildBlacklisted, isChannelIgnored] = await Promise.all([
-				db.blacklist?.checkBlacklist(userId).catch(() => false),
-				db.blacklist?.checkBlacklist(guildId).catch(() => false),
-				db.guild?.isChannelIgnored(guildId, channelId).catch(() => false),
-			]);
+			isChannelIgnored = await db.guild?.isChannelIgnored(guildId, channelId).catch(() => false);
 		} catch (error) {
 			logger.error('InteractionCreate', `Database check failed: ${error.message}`);
-		}
-
-		if (isUserBlacklisted || isGuildBlacklisted) {
-			return interaction
-				.reply({
-					content: 'You or this server is blacklisted.',
-					flags: MessageFlags.Ephemeral,
-				})
-				.catch(() => {});
 		}
 
 		if (isChannelIgnored) {

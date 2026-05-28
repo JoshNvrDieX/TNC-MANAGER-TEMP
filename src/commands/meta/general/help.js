@@ -13,7 +13,7 @@ import {
 } from 'discord.js';
 import { config } from '#config';
 import { emoji } from '#emoji';
-import { disableComponents, logger } from '#utils';
+import { autoDisable, disableComponents, logger } from '#utils';
 
 const { colors } = config;
 const CMDS_PER_PAGE = 8;
@@ -106,7 +106,7 @@ class HelpCommand extends Command {
 
 	_startCollector(ctx, message) {
 		const collector = message.createMessageComponentCollector({
-			time: 600_000,
+			time: 300_000,
 			filter: (i) => {
 				if (i.user.id !== ctx.author.id) {
 					void i.reply({
@@ -118,6 +118,8 @@ class HelpCommand extends Command {
 				return true;
 			},
 		});
+
+		autoDisable(collector, message);
 
 		collector.on('collect', async (interaction) => {
 			try {
@@ -160,12 +162,6 @@ class HelpCommand extends Command {
 			} catch (err) {
 				logger.error('Help', 'Interaction error', err);
 			}
-		});
-
-		collector.on('end', async () => {
-			try {
-				await disableComponents(message);
-			} catch {}
 		});
 	}
 

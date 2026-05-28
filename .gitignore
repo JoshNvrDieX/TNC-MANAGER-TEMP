@@ -6,3 +6,4 @@
 !src/**
 !*.yml
 !*.cjs
+.env

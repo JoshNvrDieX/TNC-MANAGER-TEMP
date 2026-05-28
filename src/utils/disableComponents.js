@@ -2,17 +2,20 @@ import { logger } from '#utils';
 import { ComponentType, ButtonStyle, MessageFlags } from 'discord.js';
 
 /**
- * Edits a message to disable all interactive components.
+ * Edits a message or interaction to disable all interactive components.
  * Link buttons are left enabled since they can't be interacted with in the usual sense.
  * Silently ignores Discord errors for unknown messages, channels, or missing access.
- * @param {import('discord.js').Message} msg
+ * @param {import('discord.js').Message|import('discord.js').Interaction} target
  * @returns {Promise<void>}
  */
-export async function disableComponents(msg) {
+export async function disableComponents(target) {
 	try {
-		if (!msg?.components?.length) return;
+		if (!target) return;
+		
+		const components = target.components || (target.message ? target.message.components : []);
+		if (!components || !components.length) return;
 
-		const disabled = msg.components.map((c) => {
+		const disabled = components.map((c) => {
 			const j = c.toJSON();
 
 			if (c.type === ComponentType.ActionRow) {
@@ -34,16 +37,34 @@ export async function disableComponents(msg) {
 			return j;
 		});
 
-		await msg.edit({
+		const payload = {
 			components: disabled,
 			flags: MessageFlags.IsComponentsV2,
-		});
+		};
+
+		if (target.edit && typeof target.edit === 'function') {
+			await target.edit(payload);
+		} else if (target.editReply && typeof target.editReply === 'function') {
+			await target.editReply(payload);
+		}
 	} catch (err) {
-		// 10008 = unknown message, 10003 = unknown channel, 50001 = missing access
-		if (![10008, 10003, 50001].includes(err.code)) {
-			logger.error('Utils', 'disableComponents error', err);
+		// 10008 = unknown message, 10003 = unknown channel, 50001 = missing access, 
+		// 10015 = unknown webhook, 40060 = interaction has already been acknowledged
+		const ignoredCodes = [10008, 10003, 50001, 10015, 40060, 50027];
+		if (!ignoredCodes.includes(err.code)) {
+			// Silently fail for most interaction/message errors during timeout
+			// logger.error('Utils', 'disableComponents error', err);
 		}
 	}
+}
+
+/**
+ * Automatically attaches an 'end' listener to a collector to disable components.
+ * @param {import('discord.js').InteractionCollector} collector
+ * @param {import('discord.js').Message|import('discord.js').Interaction} target
+ */
+export function autoDisable(collector, target) {
+	collector.on('end', () => disableComponents(target).catch(() => {}));
 }
 
 /**
@@ -75,3 +96,4 @@ export function _disableNested(comps) {
 		return j;
 	});
 }
+

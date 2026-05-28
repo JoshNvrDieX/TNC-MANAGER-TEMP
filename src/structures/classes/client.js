@@ -1,11 +1,13 @@
 import { REST } from '@discordjs/rest';
-import { Client, GatewayIntentBits, Options } from 'discord.js';
+import { Client, GatewayIntentBits, Options, Partials } from 'discord.js';
 import { config } from '#config';
 import { db } from '#dbManager';
 import { CommandHandler } from '#handlers/commandHandler';
 import { EventLoader } from '#handlers/eventLoader';
 import { logger } from '#utils';
 import { CacheManager } from '#classes/cache';
+import { MoonlinkManager } from '#classes/moonlinkManager';
+
 
 /**
  * Central bot client extending discord.js {@link Client}.
@@ -21,12 +23,19 @@ export class Bot extends Client {
                                 GatewayIntentBits.GuildMessages,
                                 GatewayIntentBits.MessageContent,
                                 GatewayIntentBits.GuildMembers,
+                                GatewayIntentBits.GuildBans,
+                                GatewayIntentBits.GuildVoiceStates,
+                                GatewayIntentBits.GuildInvites,
+                                GatewayIntentBits.GuildWebhooks,
+                                GatewayIntentBits.GuildMessageReactions,
+                                GatewayIntentBits.AutoModerationConfiguration,
+                                GatewayIntentBits.AutoModerationExecution,
                         ],
-                        partials: [],
+                        partials: [Partials.Message, Partials.Channel, Partials.GuildMember, Partials.User, Partials.Reaction],
                         allowedMentions: { parse: [], repliedUser: false },
                         makeCache: Options.cacheWithLimits({
                                 MessageManager: {
-                                        maxSize: 0,
+                                        maxSize: 500, // cache last 500 messages per channel for logging
                                         keepOverLimit: (msg) => msg.author?.id === msg.client.user?.id,
                                 },
                                 ThreadManager: 0,
@@ -80,6 +89,7 @@ export class Bot extends Client {
                                 },
                         },
                         failIfNotExists: false,
+                        rawEvents: true,
                         rest: {
                                 timeout: 15000,
                                 retries: 2,
@@ -99,6 +109,7 @@ export class Bot extends Client {
                 this.config = config;
                 this.commandHandler = new CommandHandler(this);
                 this.eventHandler = new EventLoader(this);
+                this.music = new MoonlinkManager(this);
                 this.rest = new REST({ version: '10' }).setToken(config.token);
                 /** Initialised during {@link init}. @type {import('#db/Manager').DatabaseManager|null} */
                 this.db = null;
@@ -110,20 +121,23 @@ export class Bot extends Client {
          * @throws {Error} Re-throws any initialisation error after logging it.
          * @returns {Promise<void>}
          */
-        async init() {
-                try {
-                        await this.c.init();
-                        if (this.config.cache.flushOnStart) {
-                                await this.c.clear();
-                                this.logger.info('Bot', 'Cache flushed on startup');
-                        }
+	async init() {
+		try {
+			await this.c.init();
+			if (this.config.cache.flushOnStart) {
+				await this.c.clear();
+				this.logger.info('Bot', 'Cache flushed on startup');
+			}
 
-                        this.db = await db.init();
+			this.db = db;
+			db.setClient(this);
+			await this.db.init();
                         this.logger.info('Bot', 'Database initialized');
 
-                        await this.eventHandler.loadAllEvents();
+await this.eventHandler.loadAllEvents();
                         await this.commandHandler.loadCommands();
                         await this.login(config.token);
+                        this.music.init();
                 } catch (error) {
                         this.logger.error('Bot', 'Failed to initialize bot:', error);
                         throw error;

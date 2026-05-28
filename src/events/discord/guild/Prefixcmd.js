@@ -13,6 +13,7 @@ import { db } from '#dbManager';
 import { CommandContext } from '#context';
 import { validateCommand, canBotSendMessages, logger } from '#utils';
 import { emoji } from '#emoji';
+import { AutomodEngine } from '#classes/automodEngine';
 
 const CUSTOM_PREFIXES = {
         GLOBAL: [],
@@ -284,22 +285,17 @@ export default {
                 try {
                         if (!message || message.author?.bot || !message.guild || !message.content) return;
 
-                        let isUserBlacklisted = false;
-                        let isGuildBlacklisted = false;
+                        // Run automod checks before anything else
+                        await AutomodEngine.check(message).catch(() => {});
+
                         let guildPrefixes = [];
 
                         try {
-                                [isUserBlacklisted, isGuildBlacklisted, guildPrefixes] = await Promise.all([
-                                        db.blacklist?.checkBlacklist(message.author.id).catch(() => false),
-                                        db.blacklist?.checkBlacklist(message.guild.id).catch(() => false),
-                                        db.guild?.getPrefixes(message.guild.id).catch(() => []),
-                                ]);
+                                guildPrefixes = await db.guild?.getPrefixes(message.guild.id).catch(() => []) ?? [];
                         } catch (error) {
                                 logger.error('MessageCreate', `Database check failed: ${error.message}`);
                                 return;
                         }
-
-                        if (isUserBlacklisted || isGuildBlacklisted) return;
 
                         if (await handleMentionOnly(message, client, guildPrefixes)) return;
 

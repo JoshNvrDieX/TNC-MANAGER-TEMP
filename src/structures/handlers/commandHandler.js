@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { logger } from '#utils';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -108,9 +108,12 @@ export class CommandHandler {
 	 * @param {string} category
 	 * @returns {Promise<void>}
 	 */
-	async _loadCommandFile(filePath, category) {
+	async _loadCommandFile(filePath, category, forceReload = false) {
 		try {
-			const commandModule = await import(`file://${filePath}`);
+			const importUrl = forceReload
+				? `${pathToFileURL(filePath).href}?t=${Date.now()}`
+				: pathToFileURL(filePath).href;
+			const commandModule = await import(importUrl);
 
 			if (!commandModule?.default) {
 				logger.warn(
@@ -291,6 +294,104 @@ export class CommandHandler {
 	 */
 	getSlashCommandsData() {
 		return Array.from(this.slashCommands.values());
+	}
+
+	/**
+	 * Removes a command from all internal maps by its registered key.
+	 * @param {string} key - The lowercased command name or joined array key.
+	 * @returns {import('#classes/Command').Command|undefined} The removed command, if any.
+	 */
+	_removeCommand(key) {
+		const cmd = this.commands.get(key);
+		if (!cmd) return undefined;
+
+		// Remove from categories
+		for (const [cat, cmds] of this.categories) {
+			const idx = cmds.indexOf(cmd);
+			if (idx !== -1) { cmds.splice(idx, 1); break; }
+		}
+
+		// Remove aliases
+		if (cmd.aliases?.length) {
+			cmd.aliases.forEach(a => this.aliases.delete(a.toLowerCase()));
+		}
+
+		// Remove from commands map
+		this.commands.delete(key);
+
+		// Remove from arrayCommands
+		if (Array.isArray(cmd.name)) {
+			const firstPart = cmd.name[0].toLowerCase();
+			const arr = this.arrayCommands.get(firstPart);
+			if (arr) {
+				const idx = arr.indexOf(cmd);
+				if (idx !== -1) arr.splice(idx, 1);
+				if (arr.length === 0) this.arrayCommands.delete(firstPart);
+			}
+		}
+
+		// Remove from slashCommandFiles
+		if (cmd.enabledSlash && cmd.slashData) {
+			const slashKey = Array.isArray(cmd.slashData.name)
+				? cmd.slashData.name.join(':')
+				: cmd.slashData.name;
+			this.slashCommandFiles.delete(slashKey);
+		}
+
+		// Remove commandPaths entry
+		this.commandPaths.delete(key);
+
+		return cmd;
+	}
+
+	/**
+	 * Reloads a single command by name or alias.
+	 * Removes the old instance from all maps, cache-busts the ESM import,
+	 * re-registers the command, and rebuilds the slash command tree.
+	 * @param {string} name - Command name or alias.
+	 * @returns {Promise<{success: boolean, name?: string, error?: string}>}
+	 */
+	async reloadCommand(name) {
+		name = name.toLowerCase();
+		const resolved = this.aliases.get(name) || name;
+		const filePath = this.commandPaths.get(resolved);
+		if (!filePath) return { success: false, error: `Command "${name}" not found` };
+
+		const commandsRoot = path.join(__dirname, '..', '..', '..', 'commands');
+		const relative = path.relative(commandsRoot, path.dirname(filePath));
+		const category = relative || 'default';
+
+		this._removeCommand(resolved);
+
+		await this._loadCommandFile(filePath, category, true);
+
+		this.slashCommands.clear();
+		this._finalizeSlashCommands();
+
+		logger.success('CommandHandler', `Reloaded command: ${resolved}`);
+		return { success: true, name: resolved };
+	}
+
+	/**
+	 * Reloads every command by re-scanning the entire commands directory.
+	 * @returns {Promise<number>} Number of commands reloaded.
+	 */
+	async reloadAllCommands() {
+		const prevSize = this.commands.size;
+		this.commands.clear();
+		this.aliases.clear();
+		this.arrayCommands.clear();
+		this.slashCommands.clear();
+		this.slashCommandFiles.clear();
+		this.categories.clear();
+		this.commandPaths.clear();
+
+		const commandsRoot = path.join(__dirname, '..', '..', '..', 'commands');
+		await this._recursivelyLoadCommands(commandsRoot);
+		this._finalizeSlashCommands();
+
+		logger.success('CommandHandler', `Reloaded all ${this.commands.size} commands`);
+		return this.commands.size;
 	}
 
 	/**

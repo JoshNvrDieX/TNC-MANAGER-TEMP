@@ -13,6 +13,14 @@ export class GuildService {
 	}
 
 	/**
+	 * Set the client reference for cache access.
+	 * @param {import('#classes/client').Bot} client
+	 */
+	setClient(client) {
+		this.repo.client = client;
+	}
+
+	/**
 	 * Returns the guild record, or `null` if it doesn't exist.
 	 * @param {string} guildId
 	 * @returns {Promise<Object|null>}
@@ -173,6 +181,64 @@ export class GuildService {
 		await this.ensureGuild(guildId);
 		await this.repo.update(guildId, { bioUpdatedAt: new Date() });
 		return true;
+	}
+
+	/**
+	 * @param {string} guildId
+	 * @returns {Promise<Date|null>}
+	 */
+	async getDisplayNameUpdatedAt(guildId) {
+		const guild = await this.ensureGuild(guildId);
+		return guild.displayNameUpdatedAt;
+	}
+
+	/**
+	 * Stamps `displayNameUpdatedAt` with the current time.
+	 * @param {string} guildId
+	 * @returns {Promise<true>}
+	 */
+	async setDisplayNameUpdatedAt(guildId) {
+		await this.ensureGuild(guildId);
+		await this.repo.update(guildId, { displayNameUpdatedAt: new Date() });
+		return true;
+	}
+
+	/**
+	 * @param {string} guildId
+	 * @returns {Promise<string|null>}
+	 */
+	async getProfileBioText(guildId) {
+		const guild = await this.ensureGuild(guildId);
+		return guild.profileBioText;
+	}
+
+	/**
+	 * @param {string} guildId
+	 * @param {string|null} text
+	 * @returns {Promise<void>}
+	 */
+	async setProfileBioText(guildId, text) {
+		await this.ensureGuild(guildId);
+		await this.repo.update(guildId, { profileBioText: text });
+	}
+
+	/**
+	 * @param {string} guildId
+	 * @returns {Promise<Object>}
+	 */
+	async getNameStyleData(guildId) {
+		const guild = await this.ensureGuild(guildId);
+		return guild.nameStyleData || {};
+	}
+
+	/**
+	 * @param {string} guildId
+	 * @param {Object} data - { fontId, effectId, colors }
+	 * @returns {Promise<void>}
+	 */
+	async setNameStyleData(guildId, data) {
+		await this.ensureGuild(guildId);
+		await this.repo.update(guildId, { nameStyleData: data });
 	}
 
 	/**

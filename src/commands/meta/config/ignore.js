@@ -17,7 +17,7 @@ import { emoji } from '#emoji';
 import { config } from '#config';
 const { colors } = config;
 
-import { disableComponents, logger } from '#utils';
+import { autoDisable, disableComponents, logger } from '#utils';
 
 class IgnoreCommand extends Command {
 	constructor() {
@@ -142,18 +142,14 @@ class IgnoreCommand extends Command {
 			},
 		});
 
+		autoDisable(collector, message);
+
 		collector.on('collect', async (interaction) => {
 			try {
 				await this._handleAction(ctx, message, interaction);
 			} catch (error) {
 				logger.error('Ignore', 'Interaction error', error);
 			}
-		});
-
-		collector.on('end', async () => {
-			try {
-				await disableComponents(message);
-			} catch {}
 		});
 	}
 

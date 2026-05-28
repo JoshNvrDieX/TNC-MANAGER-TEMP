@@ -1,4 +1,10 @@
-import 'dotenv/config';
+import { config as dotenvConfig } from 'dotenv';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+// Load .env from src/config/ regardless of where the process is started from
+const __dirname = dirname(fileURLToPath(import.meta.url));
+dotenvConfig({ path: join(__dirname, '.env'), override: true });
 
 const environment = process.env.NODE_ENV || 'development';
 const isProduction = environment === 'production';
@@ -23,7 +29,9 @@ export const config = {
         version: '2.0.0',
 
         database: {
-                url: process.env.MONGODB_URI || '',
+                // SQLite — path is resolved automatically relative to the project root.
+                // Override with DATABASE_PATH env var if needed.
+                path: process.env.DATABASE_PATH || '',
         },
 
         cache: {
@@ -31,6 +39,24 @@ export const config = {
                 maxSize: isProduction ? 100000 : 50000,
                 flushOnStart: false,
                 flushOnShutdown: false,
+        },
+
+        tnc: {
+                // Role ID that members must have to apply (or null to disable).
+                // This is an alternative to the per-guild `/tnc setrole` command.
+                requiredRoleId: process.env.TNC_REQUIRED_ROLE_ID || null,
+        },
+
+        lavalink: {
+                nodes: [
+                        {
+                                identifier: 'lyrixa',
+                                host: 'ultra.visionhost.cloud',
+                                port: 2037,
+                                password: 'Devine',
+                                secure: false,
+                        },
+                ],
         },
 
         debug: !isProduction,

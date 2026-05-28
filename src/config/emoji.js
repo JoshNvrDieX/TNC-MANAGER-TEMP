@@ -5,8 +5,8 @@
  * @property {Function} get - Gets emoji by name with optional fallback
  */
 export const emoji = {
-	check: '✅',
-	cross: '❌',
+	check: '<a:tick:1501831530924867695>',
+	cross: '<a:tickwrong:1501831623216332882>',
 	info: 'ℹ️',
 	code: '💻',
 	activity: '📊',

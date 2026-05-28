@@ -18,7 +18,7 @@ import { config } from '#config';
 import { emoji } from '#emoji';
 const { colors } = config;
 
-import { disableComponents, logger } from '#utils';
+import { autoDisable, disableComponents, logger } from '#utils';
 
 class PrefixCommand extends Command {
 	constructor() {
@@ -114,18 +114,14 @@ class PrefixCommand extends Command {
 			},
 		});
 
+		autoDisable(collector, message);
+
 		collector.on('collect', async (interaction) => {
 			try {
 				await this._handleAction(ctx, message, interaction);
 			} catch (error) {
 				logger.error('Prefix', 'Interaction error', error);
 			}
-		});
-
-		collector.on('end', async () => {
-			try {
-				await disableComponents(message);
-			} catch {}
 		});
 	}
 
